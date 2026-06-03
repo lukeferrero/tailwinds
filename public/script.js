@@ -2,6 +2,7 @@ let currentApartmentId = null;
 let currentApartmentName = null;
 let allApartments = [];
 let imageConfig = {};
+let currentCustomFields = [];
 
 // ===== GESTIONE TAB =====
 
@@ -102,19 +103,9 @@ function viewApartment(idx) {
   disableEdit();
   loadFiles();
   
-  fetch(`/api/personalizzazioni/${apt.id}`)
-    .then(res => res.json())
-    .then(data => {
-      if (data) {
-        document.getElementById('pavimento').value = data.pavimento || '';
-        document.getElementById('sanitari').value = data.sanitari || '';
-        document.getElementById('rubinetteria').value = data.rubinetteria || '';
-        document.getElementById('ac').value = data.ac || '';
-        document.getElementById('infissiEsterni').value = data.infissiEsterni || '';
-        document.getElementById('infissiInterni').value = data.infissiInterni || '';
-      }
-      updateAllImages();
-    });
+  // CARICA CAMPI PERSONALIZZATI
+  loadAndRenderDynamicFields();
+  loadDynamicFieldValues(apt.id);
 }
 
 function backToList() {
@@ -127,12 +118,20 @@ function enableEdit() {
   document.getElementById('editBtn').style.display = 'none';
   document.getElementById('saveBtn').style.display = 'block';
   
-  document.getElementById('pavimento').disabled = false;
-  document.getElementById('sanitari').disabled = false;
-  document.getElementById('rubinetteria').disabled = false;
-  document.getElementById('ac').disabled = false;
-  document.getElementById('infissiEsterni').disabled = false;
-  document.getElementById('infissiInterni').disabled = false;
+  // Abilita campi personalizzati
+  currentCustomFields.forEach(field => {
+    const input = document.getElementById(`custom-${field.id}`);
+    if (input) {
+      input.disabled = false;
+      if (field.fieldType === 'file') {
+        const btn = input.nextElementSibling;
+        if (btn && btn.className === 'btn-upload') {
+          btn.style.display = 'inline-block';
+        }
+      }
+    }
+  });
+  
   document.getElementById('uploadBtn').style.display = 'inline-block';
   document.getElementById('fileInput').disabled = false;
 }
@@ -141,39 +140,167 @@ function disableEdit() {
   document.getElementById('editBtn').style.display = 'block';
   document.getElementById('saveBtn').style.display = 'none';
   
-  document.getElementById('pavimento').disabled = true;
-  document.getElementById('sanitari').disabled = true;
-  document.getElementById('rubinetteria').disabled = true;
-  document.getElementById('ac').disabled = true;
-  document.getElementById('infissiEsterni').disabled = true;
-  document.getElementById('infissiInterni').disabled = true;
+  // Disabilita campi personalizzati
+  currentCustomFields.forEach(field => {
+    const input = document.getElementById(`custom-${field.id}`);
+    if (input) {
+      input.disabled = true;
+      if (field.fieldType === 'file') {
+        const btn = input.nextElementSibling;
+        if (btn && btn.className === 'btn-upload') {
+          btn.style.display = 'none';
+        }
+      }
+    }
+  });
+  
   document.getElementById('uploadBtn').style.display = 'none';
   document.getElementById('fileInput').disabled = true;
 }
 
 function savePersonalization() {
-  const data = {
-    id: currentApartmentId,
-    apartmentId: currentApartmentId,
-    pavimento: document.getElementById('pavimento').value,
-    sanitari: document.getElementById('sanitari').value,
-    rubinetteria: document.getElementById('rubinetteria').value,
-    ac: document.getElementById('ac').value,
-    infissiEsterni: document.getElementById('infissiEsterni').value,
-    infissiInterni: document.getElementById('infissiInterni').value
-  };
+  // Salva campi personalizzati
+  saveDynamicFieldValues();
   
-  fetch('/api/personalizzazioni', {
+  showMessage('✅ Salvato!', 'success');
+  disableEdit();
+}
+
+// ===== CAMPI PERSONALIZZATI DINAMICI =====
+
+function loadAndRenderDynamicFields() {
+  fetch('/api/custom-fields')
+    .then(res => res.json())
+    .then(fields => {
+      currentCustomFields = fields;
+      renderDynamicFields(fields);
+    })
+    .catch(err => console.error('Errore caricamento campi:', err));
+}
+
+function renderDynamicFields(fields) {
+  const container = document.getElementById('dynamicFieldsContainer');
+  container.innerHTML = '';
+
+  fields.forEach(field => {
+    const fieldGroup = document.createElement('div');
+    fieldGroup.className = 'form-group';
+    fieldGroup.id = `field-${field.id}`;
+
+    let inputHTML = '';
+
+    switch(field.fieldType) {
+      case 'text':
+        const maxAttr = field.maxLength ? `maxlength="${field.maxLength}"` : '';
+        inputHTML = `<input type="text" id="custom-${field.id}" placeholder="${field.fieldName}" disabled ${maxAttr}>`;
+        if (field.maxLength) {
+          inputHTML += `<small style="color: #999; margin-top: 5px; display: block;">Max ${field.maxLength} caratteri</small>`;
+        }
+        break;
+
+      case 'number':
+        inputHTML = `<input type="number" id="custom-${field.id}" placeholder="${field.fieldName}" disabled>`;
+        break;
+
+      case 'boolean':
+        inputHTML = `<label><input type="checkbox" id="custom-${field.id}" disabled> ${field.fieldName}</label>`;
+        break;
+
+      case 'select':
+        inputHTML = `<select id="custom-${field.id}" disabled onchange="updateSelectImage(${field.id}, this.value)">
+          <option value="">-- Seleziona --</option>`;
+        field.fieldOptions.forEach(opt => {
+          inputHTML += `<option value="${opt}">${opt}</option>`;
+        });
+        inputHTML += `</select>`;
+        inputHTML += `<div class="image-preview" id="select-${field.id}-img"></div>`;
+        break;
+
+      case 'file':
+        inputHTML = `<input type="file" id="custom-${field.id}" disabled style="display: none;">
+          <button type="button" class="btn-upload" onclick="document.getElementById('custom-${field.id}').click()" style="display: none;">
+            📤 Carica File
+          </button>
+          <div id="custom-${field.id}-files" style="margin-top: 10px;"></div>`;
+        break;
+    }
+
+    fieldGroup.innerHTML = `<label>${field.fieldName}${field.required ? ' *' : ''}</label>${inputHTML}`;
+    container.appendChild(fieldGroup);
+  });
+}
+
+function loadDynamicFieldValues(apartmentId) {
+  fetch(`/api/custom-field-values/${apartmentId}`)
+    .then(res => res.json())
+    .then(values => {
+      Object.entries(values).forEach(([fieldId, fieldValue]) => {
+        const input = document.getElementById(`custom-${fieldId}`);
+        if (input) {
+          if (input.type === 'checkbox') {
+            input.checked = fieldValue === '1' || fieldValue === 'true';
+          } else {
+            input.value = fieldValue || '';
+          }
+          
+          // Se è un select, mostra l'immagine
+          if (input.tagName === 'SELECT' && fieldValue) {
+            updateSelectImage(fieldId, fieldValue);
+          }
+        }
+      });
+    })
+    .catch(err => console.error('Errore caricamento valori:', err));
+}
+
+function saveDynamicFieldValues() {
+  const values = {};
+
+  currentCustomFields.forEach(field => {
+    const input = document.getElementById(`custom-${field.id}`);
+    if (input) {
+      let value = '';
+      if (input.type === 'checkbox') {
+        value = input.checked ? '1' : '0';
+      } else if (input.tagName === 'SELECT') {
+        value = input.value;
+      } else {
+        value = input.value;
+      }
+      if (value) {
+        values[field.id] = value;
+      }
+    }
+  });
+
+  fetch('/api/custom-field-values/bulk', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
+    body: JSON.stringify({
+      apartmentId: currentApartmentId,
+      values: values
+    })
   })
   .then(res => res.json())
-  .then(() => {
-    showMessage('✅ Salvato!', 'success');
-    disableEdit();
-  })
-  .catch(err => showMessage('❌ Errore', 'error'));
+  .catch(err => console.error('Errore salvataggio campi:', err));
+}
+
+function updateSelectImage(fieldId, optionValue) {
+  const imgDiv = document.getElementById(`select-${fieldId}-img`);
+  if (!imgDiv) return;
+
+  // Cerca l'immagine per questo select e questa opzione
+  fetch('/api/immagini')
+    .then(res => res.json())
+    .then(config => {
+      const fieldKey = `select_${fieldId}`;
+      if (config[fieldKey] && config[fieldKey][optionValue]) {
+        const imgUrl = config[fieldKey][optionValue];
+        imgDiv.innerHTML = `<img src="${imgUrl}" alt="${optionValue}">`;
+      } else {
+        imgDiv.innerHTML = '';
+      }
+    });
 }
 
 // ===== IMMAGINI =====
@@ -188,37 +315,41 @@ function loadImageConfig() {
 }
 
 function renderImageConfig() {
-  const fields = [
-    {id: 'pavimento', label: 'Pavimento', options: ['Piastrelle ceramiche', 'Piastrelle gres porcellanato', 'Parquet naturale', 'Parquet laminato', 'Cemento levigato', 'Marmo', 'Vinile/LVT']},
-    {id: 'sanitari', label: 'Sanitari', options: ['Standard (bidet, wc, lavandino)', 'Premium (bidet, wc, lavandino, doccia)', 'Lusso (vasca + doccia, doppio lavandino)', 'Minimalista (wc sospeso, lavandino, doccia)']},
-    {id: 'ac', label: 'A/C', options: ['Nessuno', 'Unità singola', 'Multisplit (2 unità)', 'Multisplit (3+ unità)', 'Pompa di calore']},
-    {id: 'infissiEsterni', label: 'Infissi Esterni', options: ['Alluminio', 'Alluminio con taglio termico', 'Legno', 'PVC', 'Legno-alluminio']},
-    {id: 'infissiInterni', label: 'Infissi Interni', options: ['Legno massiccio', 'Legno laminato', 'PVC', 'Alluminio', 'Vetro (scorrevole)']}
-  ];
-  
-  let html = '';
-  fields.forEach(field => {
-    html += `<div class="image-config-card">
-      <h3>${field.label}</h3>
-      <div class="image-options">`;
-    
-    field.options.forEach(opt => {
-      const imgUrl = imageConfig[field.id] && imageConfig[field.id][opt] ? imageConfig[field.id][opt] : '';
-      html += `<div class="image-option">
-        <span class="image-option-name">${opt}</span>
-        <input type="text" class="image-option-input" id="img_${field.id}_${opt}" placeholder="URL immagine" value="${imgUrl}">
-        <button type="button" class="image-option-btn" onclick="saveImageMapping('${field.id}', '${opt.replace(/'/g, "\\'")}')">💾</button>
-      </div>`;
+  fetch('/api/custom-fields')
+    .then(res => res.json())
+    .then(fields => {
+      const selectFields = fields.filter(f => f.fieldType === 'select');
+      
+      if (selectFields.length === 0) {
+        document.getElementById('imagesContainer').innerHTML = '<p style="color: #999; text-align: center; padding: 40px;">Nessun campo select personalizzato. Creane uno in "⚙️ Personalizza Campi"</p>';
+        return;
+      }
+
+      let html = '';
+      selectFields.forEach(field => {
+        html += `<div class="image-config-card">
+          <h3>${field.fieldName}</h3>
+          <div class="image-options">`;
+        
+        field.fieldOptions.forEach(opt => {
+          const fieldKey = `select_${field.id}`;
+          const imgUrl = imageConfig[fieldKey] && imageConfig[fieldKey][opt] ? imageConfig[fieldKey][opt] : '';
+          html += `<div class="image-option">
+            <span class="image-option-name">${opt}</span>
+            <input type="text" class="image-option-input" id="img_select_${field.id}_${opt}" placeholder="URL immagine" value="${imgUrl}">
+            <button type="button" class="image-option-btn" onclick="saveImageMappingForSelect(${field.id}, '${opt.replace(/'/g, "\\'")}')">💾</button>
+          </div>`;
+        });
+        
+        html += '</div></div>';
+      });
+      
+      document.getElementById('imagesContainer').innerHTML = html;
     });
-    
-    html += '</div></div>';
-  });
-  
-  document.getElementById('imagesContainer').innerHTML = html;
 }
 
-function saveImageMapping(field, option) {
-  const inputId = `img_${field}_${option}`;
+function saveImageMappingForSelect(fieldId, option) {
+  const inputId = `img_select_${fieldId}_${option}`;
   const imageUrl = document.getElementById(inputId).value;
   
   if (!imageUrl) {
@@ -226,10 +357,12 @@ function saveImageMapping(field, option) {
     return;
   }
   
+  const fieldKey = `select_${fieldId}`;
+  
   fetch('/api/immagini', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ field, option, imageUrl })
+    body: JSON.stringify({ field: fieldKey, option: option, imageUrl })
   })
   .then(res => res.json())
   .then(() => {
@@ -239,28 +372,14 @@ function saveImageMapping(field, option) {
   .catch(err => showMessage('❌ Errore', 'error'));
 }
 
-function updateImage(field) {
-  const value = document.getElementById(field).value;
-  const imgDiv = document.getElementById(field + '-img');
-  
-  if (!value || !imageConfig[field] || !imageConfig[field][value]) {
-    imgDiv.innerHTML = '';
-    return;
-  }
-  
-  const imgUrl = imageConfig[field][value];
-  imgDiv.innerHTML = `<img src="${imgUrl}" alt="${value}">`;
-}
-
-function updateAllImages() {
-  ['pavimento', 'sanitari', 'ac', 'infissiEsterni', 'infissiInterni'].forEach(field => {
-    updateImage(field);
-  });
-}
-
 // ===== FILE MANAGEMENT =====
 
-document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+document.addEventListener('DOMContentLoaded', function() {
+  const fileInput = document.getElementById('fileInput');
+  if (fileInput) {
+    fileInput.addEventListener('change', handleFileUpload);
+  }
+});
 
 function handleFileUpload(event) {
   const files = event.target.files;
@@ -348,174 +467,3 @@ function showMessage(text, type) {
 window.onload = function() {
   loadApartments();
 };
-
-// ===== CAMPI PERSONALIZZATI DINAMICI =====
-
-let currentCustomFields = [];
-
-function loadAndRenderDynamicFields() {
-  fetch('/api/custom-fields')
-    .then(res => res.json())
-    .then(fields => {
-      currentCustomFields = fields;
-      renderDynamicFields(fields);
-      
-      // Carica i valori salvati
-      if (currentApartmentId) {
-        loadDynamicFieldValues(currentApartmentId);
-      }
-    });
-}
-
-function renderDynamicFields(fields) {
-  const container = document.getElementById('dynamicFieldsContainer');
-  container.innerHTML = '';
-
-  fields.forEach(field => {
-    const fieldGroup = document.createElement('div');
-    fieldGroup.className = 'form-group';
-    fieldGroup.id = `field-${field.id}`;
-
-    let inputHTML = '';
-
-    switch(field.fieldType) {
-      case 'text':
-        const maxAttr = field.maxLength ? `maxlength="${field.maxLength}"` : '';
-        inputHTML = `<input type="text" id="custom-${field.id}" placeholder="${field.fieldName}" disabled ${maxAttr}>`;
-        if (field.maxLength) {
-          inputHTML += `<small style="color: #999; margin-top: 5px; display: block;">Max ${field.maxLength} caratteri</small>`;
-        }
-        break;
-
-      case 'number':
-        inputHTML = `<input type="number" id="custom-${field.id}" placeholder="${field.fieldName}" disabled>`;
-        break;
-
-      case 'boolean':
-        inputHTML = `<label><input type="checkbox" id="custom-${field.id}" disabled> ${field.fieldName}</label>`;
-        break;
-
-      case 'select':
-        inputHTML = `<select id="custom-${field.id}" disabled>
-          <option value="">-- Seleziona --</option>`;
-        field.fieldOptions.forEach(opt => {
-          inputHTML += `<option value="${opt}">${opt}</option>`;
-        });
-        inputHTML += `</select>`;
-        break;
-
-      case 'file':
-        inputHTML = `<input type="file" id="custom-${field.id}" disabled style="display: none;">
-          <button type="button" class="btn-upload" onclick="document.getElementById('custom-${field.id}').click()" style="display: none;">
-            📤 Carica File
-          </button>
-          <div id="custom-${field.id}-files" style="margin-top: 10px;"></div>`;
-        break;
-    }
-
-    fieldGroup.innerHTML = `<label>${field.fieldName}${field.required ? ' *' : ''}</label>${inputHTML}`;
-    container.appendChild(fieldGroup);
-  });
-}
-
-function loadDynamicFieldValues(apartmentId) {
-  fetch(`/api/custom-field-values/${apartmentId}`)
-    .then(res => res.json())
-    .then(values => {
-      Object.entries(values).forEach(([fieldId, fieldValue]) => {
-        const input = document.getElementById(`custom-${fieldId}`);
-        if (input) {
-          if (input.type === 'checkbox') {
-            input.checked = fieldValue === '1' || fieldValue === 'true';
-          } else {
-            input.value = fieldValue || '';
-          }
-        }
-      });
-    });
-}
-
-function saveDynamicFieldValues() {
-  const values = {};
-
-  currentCustomFields.forEach(field => {
-    const input = document.getElementById(`custom-${field.id}`);
-    if (input) {
-      let value = '';
-      if (input.type === 'checkbox') {
-        value = input.checked ? '1' : '0';
-      } else {
-        value = input.value;
-      }
-      values[field.id] = value;
-    }
-  });
-
-  fetch('/api/custom-field-values/bulk', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      apartmentId: currentApartmentId,
-      values: values
-    })
-  })
-  .then(res => res.json())
-  .then(() => {
-    console.log('Campi personalizzati salvati');
-  });
-}
-
-// Aggiorna la funzione savePersonalization per salvare anche i campi personalizzati
-const originalSavePersonalization = savePersonalization;
-savePersonalization = function() {
-  originalSavePersonalization();
-  saveDynamicFieldValues();
-};
-
-// Aggiorna la funzione viewApartment per caricare i campi dinamici
-const originalViewApartment = viewApartment;
-viewApartment = function(idx) {
-  originalViewApartment(idx);
-  setTimeout(() => {
-    loadAndRenderDynamicFields();
-  }, 100);
-};
-
-// Aggiorna enableEdit per abilitare i campi dinamici
-const originalEnableEdit = enableEdit;
-enableEdit = function() {
-  originalEnableEdit();
-  
-  currentCustomFields.forEach(field => {
-    const input = document.getElementById(`custom-${field.id}`);
-    if (input) {
-      input.disabled = false;
-      if (field.fieldType === 'file') {
-        const btn = input.nextElementSibling;
-        if (btn && btn.className === 'btn-upload') {
-          btn.style.display = 'inline-block';
-        }
-      }
-    }
-  });
-};
-
-// Aggiorna disableEdit per disabilitare i campi dinamici
-const originalDisableEdit = disableEdit;
-disableEdit = function() {
-  originalDisableEdit();
-  
-  currentCustomFields.forEach(field => {
-    const input = document.getElementById(`custom-${field.id}`);
-    if (input) {
-      input.disabled = true;
-      if (field.fieldType === 'file') {
-        const btn = input.nextElementSibling;
-        if (btn && btn.className === 'btn-upload') {
-          btn.style.display = 'none';
-        }
-      }
-    }
-  });
-};
-
