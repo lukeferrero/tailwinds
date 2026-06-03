@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestione Appartamenti</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- SCHERMATA LISTA -->
+  <div id="listScreen">
+    <div class="container">
+      <div class="header">
+        <h1>🏠 Gestione Appartamenti</h1>
+        <p>Visualizza e personalizza gli appartamenti</p>
+      </div>
+      
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('apartments')">📋 Appartamenti</button>
+        <button class="tab-btn" onclick="switchTab('images')">🖼️ Configura Immagini</button>
+      </div>
+      
+      <div class="content">
+        <!-- TAB APPARTAMENTI -->
+        <div id="apartments" class="tab-content active">
+          <div class="button-group">
+            <button class="btn btn-primary" onclick="reloadApartments()">🔄 Aggiorna</button>
+            <button class="btn btn-success" onclick="addNewApartment()">➕ Nuovo Appartamento</button>
+          </div>
+          
+          <div id="loading" class="loading">
+            <div class="spinner"></div>
+            Caricamento...
+          </div>
+          
+          <div class="table-wrapper" id="tableContainer" style="display: none;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Dimensione (mq)</th>
+                  <th>Prezzo (€)</th>
+                  <th>Stato</th>
+                  <th>Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="tableBody"></tbody>
+            </table>
+          </div>
+        </div>
+        
+        <!-- TAB IMMAGINI -->
+        <div id="images" class="tab-content">
+          <h2 style="margin-bottom: 30px; color: #333;">Configura Immagini per le Opzioni</h2>
+          <div id="imagesContainer" class="images-grid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- SCHERMATA DETTAGLIO -->
+  <div id="detailScreen">
+    <div class="detail-header">
+      <h1 id="detailName">Nome Appartamento</h1>
+      <p id="detailInfo">Info</p>
+    </div>
+    
+    <div class="detail-toolbar">
+      <button class="btn-back" onclick="backToList()">← Indietro</button>
+      <button class="btn-edit" id="editBtn" onclick="enableEdit()">✏️ Edita</button>
+      <button class="btn-save" id="saveBtn" onclick="savePersonalization()">💾 Salva</button>
+    </div>
+    
+    <div class="detail-content">
+      <div class="message" id="message"></div>
+      
+      <form id="detailForm">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Pavimento</label>
+            <select id="pavimento" onchange="updateImage('pavimento')" disabled>
+              <option value="">-- Seleziona --</option>
+              <option value="Piastrelle ceramiche">Piastrelle ceramiche</option>
+              <option value="Piastrelle gres porcellanato">Piastrelle gres porcellanato</option>
+              <option value="Parquet naturale">Parquet naturale</option>
+              <option value="Parquet laminato">Parquet laminato</option>
+              <option value="Cemento levigato">Cemento levigato</option>
+              <option value="Marmo">Marmo</option>
+              <option value="Vinile/LVT">Vinile/LVT</option>
+            </select>
+            <div class="image-preview" id="pavimento-img"></div>
+          </div>
+          
+          <div class="form-group">
+            <label>Sanitari</label>
+            <select id="sanitari" onchange="updateImage('sanitari')" disabled>
+              <option value="">-- Seleziona --</option>
+              <option value="Standard (bidet, wc, lavandino)">Standard</option>
+              <option value="Premium (bidet, wc, lavandino, doccia)">Premium</option>
+              <option value="Lusso (vasca + doccia, doppio lavandino)">Lusso</option>
+              <option value="Minimalista (wc sospeso, lavandino, doccia)">Minimalista</option>
+            </select>
+            <div class="image-preview" id="sanitari-img"></div>
+          </div>
+          
+          <div class="form-group">
+            <label>Rubinetteria</label>
+            <input type="text" id="rubinetteria" placeholder="es: Miscelatore cromato" disabled>
+          </div>
+          
+          <div class="form-group">
+            <label>A/C (Aria Condizionata)</label>
+            <select id="ac" onchange="updateImage('ac')" disabled>
+              <option value="">-- Seleziona --</option>
+              <option value="Nessuno">Nessuno</option>
+              <option value="Unità singola">Unità singola</option>
+              <option value="Multisplit (2 unità)">Multisplit (2 unità)</option>
+              <option value="Multisplit (3+ unità)">Multisplit (3+ unità)</option>
+              <option value="Pompa di calore">Pompa di calore</option>
+            </select>
+            <div class="image-preview" id="ac-img"></div>
+          </div>
+          
+          <div class="form-group">
+            <label>Infissi Esterni</label>
+            <select id="infissiEsterni" onchange="updateImage('infissiEsterni')" disabled>
+              <option value="">-- Seleziona --</option>
+              <option value="Alluminio">Alluminio</option>
+              <option value="Alluminio con taglio termico">Alluminio con taglio termico</option>
+              <option value="Legno">Legno</option>
+              <option value="PVC">PVC</option>
+              <option value="Legno-alluminio">Legno-alluminio</option>
+            </select>
+            <div class="image-preview" id="infissiEsterni-img"></div>
+          </div>
+          
+          <div class="form-group">
+            <label>Infissi Interni</label>
+            <select id="infissiInterni" onchange="updateImage('infissiInterni')" disabled>
+              <option value="">-- Seleziona --</option>
+              <option value="Legno massiccio">Legno massiccio</option>
+              <option value="Legno laminato">Legno laminato</option>
+              <option value="PVC">PVC</option>
+              <option value="Alluminio">Alluminio</option>
+              <option value="Vetro (scorrevole)">Vetro (scorrevole)</option>
+            </select>
+            <div class="image-preview" id="infissiInterni-img"></div>
+          </div>
+        </div>
+        
+        <!-- FILES SECTION -->
+        <div class="files-section">
+          <h3>📎 File Allegati</h3>
+          
+          <ul class="files-list" id="filesList">
+            <li style="color: #999; border: none; background: white;">Nessun file caricato</li>
+          </ul>
+          
+          <div class="form-group">
+            <label>Carica File</label>
+            <input type="file" id="fileInput" disabled style="display: none;">
+            <button type="button" class="btn-upload" id="uploadBtn" onclick="document.getElementById('fileInput').click()" style="display: none;">
+              📤 Seleziona File
+            </button>
+            <small style="color: #999; margin-top: 5px; display: block;">
+              ⚠️ Clicca "✏️ Edita" per caricare file
+            </small>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+  
+  <script src="script.js"></script>
+</body>
+</html>
