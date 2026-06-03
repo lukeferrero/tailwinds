@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gestione Appartamenti</title>
+  <title>Tailwinds - Gestione Appartamenti</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,12 +11,13 @@
   <div id="listScreen">
     <div class="container">
       <div class="header">
-        <h1>🏠 Gestione Appartamenti</h1>
-        <p>Visualizza e personalizza gli appartamenti</p>
+        <h1>🏠 Tailwinds</h1>
+        <p>Gestione Appartamenti Personalizzata</p>
       </div>
       
       <div class="tabs">
         <button class="tab-btn active" onclick="switchTab('apartments')">📋 Appartamenti</button>
+        <button class="tab-btn" onclick="switchTab('customize')">⚙️ Personalizza Campi</button>
         <button class="tab-btn" onclick="switchTab('images')">🖼️ Configura Immagini</button>
       </div>
       
@@ -48,16 +49,94 @@
             </table>
           </div>
         </div>
+
+        <!-- TAB PERSONALIZZA CAMPI (NUOVO) -->
+        <div id="customize" class="tab-content">
+          <h2 style="margin-bottom: 30px; color: #333;">⚙️ Personalizza Campi di Dettaglio</h2>
+          
+          <div class="button-group">
+            <button class="btn btn-success" onclick="openAddFieldForm()">➕ Aggiungi Campo</button>
+          </div>
+
+          <div class="message" id="adminMessage"></div>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nome Campo</th>
+                  <th>Tipo</th>
+                  <th>Obbligatorio</th>
+                  <th>Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="fieldsTableBody"></tbody>
+            </table>
+          </div>
+        </div>
         
         <!-- TAB IMMAGINI -->
         <div id="images" class="tab-content">
-          <h2 style="margin-bottom: 30px; color: #333;">Configura Immagini per le Opzioni</h2>
+          <h2 style="margin-bottom: 30px; color: #333;">🖼️ Configura Immagini per le Opzioni</h2>
           <div id="imagesContainer" class="images-grid"></div>
         </div>
       </div>
     </div>
   </div>
   
+  <!-- MODAL AGGIUNGI/MODIFICA CAMPO (NUOVO) -->
+  <div id="fieldFormModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="fieldFormTitle">Aggiungi Campo Personalizzato</h2>
+        <button class="modal-close" onclick="closeFieldForm()">✕</button>
+      </div>
+      
+      <form id="fieldForm" onsubmit="event.preventDefault(); saveField();">
+        <input type="hidden" id="fieldId">
+        
+        <div class="form-group">
+          <label>Nome Campo *</label>
+          <input type="text" id="fieldName" placeholder="es: Descrizione" required>
+        </div>
+        
+        <div class="form-group">
+          <label>Tipo di Campo *</label>
+          <select id="fieldType" onchange="updateFieldTypeOptions()" required>
+            <option value="">-- Seleziona --</option>
+            <option value="text">📝 Testo libero</option>
+            <option value="number">🔢 Numero</option>
+            <option value="boolean">✓ Si/No</option>
+            <option value="select">📋 Menu a tendina</option>
+            <option value="file">📤 Caricamento file</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="fieldMaxLengthGroup" style="display: none;">
+          <label>Max caratteri (opzionale)</label>
+          <input type="number" id="fieldMaxLength" placeholder="es: 100">
+        </div>
+
+        <div class="form-group" id="fieldOptionsGroup" style="display: none;">
+          <label>Opzioni (una per riga) *</label>
+          <textarea id="fieldOptions" placeholder="Opzione 1&#10;Opzione 2&#10;Opzione 3" style="height: 150px;"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="fieldRequired">
+            Campo obbligatorio
+          </label>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+          <button type="submit" class="btn btn-success">💾 Salva Campo</button>
+          <button type="button" class="btn btn-default" onclick="closeFieldForm()">Annulla</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- SCHERMATA DETTAGLIO -->
   <div id="detailScreen">
     <div class="detail-header">
@@ -75,79 +154,9 @@
       <div class="message" id="message"></div>
       
       <form id="detailForm">
-        <div class="form-grid">
-          <div class="form-group">
-            <label>Pavimento</label>
-            <select id="pavimento" onchange="updateImage('pavimento')" disabled>
-              <option value="">-- Seleziona --</option>
-              <option value="Piastrelle ceramiche">Piastrelle ceramiche</option>
-              <option value="Piastrelle gres porcellanato">Piastrelle gres porcellanato</option>
-              <option value="Parquet naturale">Parquet naturale</option>
-              <option value="Parquet laminato">Parquet laminato</option>
-              <option value="Cemento levigato">Cemento levigato</option>
-              <option value="Marmo">Marmo</option>
-              <option value="Vinile/LVT">Vinile/LVT</option>
-            </select>
-            <div class="image-preview" id="pavimento-img"></div>
-          </div>
-          
-          <div class="form-group">
-            <label>Sanitari</label>
-            <select id="sanitari" onchange="updateImage('sanitari')" disabled>
-              <option value="">-- Seleziona --</option>
-              <option value="Standard (bidet, wc, lavandino)">Standard</option>
-              <option value="Premium (bidet, wc, lavandino, doccia)">Premium</option>
-              <option value="Lusso (vasca + doccia, doppio lavandino)">Lusso</option>
-              <option value="Minimalista (wc sospeso, lavandino, doccia)">Minimalista</option>
-            </select>
-            <div class="image-preview" id="sanitari-img"></div>
-          </div>
-          
-          <div class="form-group">
-            <label>Rubinetteria</label>
-            <input type="text" id="rubinetteria" placeholder="es: Miscelatore cromato" disabled>
-          </div>
-          
-          <div class="form-group">
-            <label>A/C (Aria Condizionata)</label>
-            <select id="ac" onchange="updateImage('ac')" disabled>
-              <option value="">-- Seleziona --</option>
-              <option value="Nessuno">Nessuno</option>
-              <option value="Unità singola">Unità singola</option>
-              <option value="Multisplit (2 unità)">Multisplit (2 unità)</option>
-              <option value="Multisplit (3+ unità)">Multisplit (3+ unità)</option>
-              <option value="Pompa di calore">Pompa di calore</option>
-            </select>
-            <div class="image-preview" id="ac-img"></div>
-          </div>
-          
-          <div class="form-group">
-            <label>Infissi Esterni</label>
-            <select id="infissiEsterni" onchange="updateImage('infissiEsterni')" disabled>
-              <option value="">-- Seleziona --</option>
-              <option value="Alluminio">Alluminio</option>
-              <option value="Alluminio con taglio termico">Alluminio con taglio termico</option>
-              <option value="Legno">Legno</option>
-              <option value="PVC">PVC</option>
-              <option value="Legno-alluminio">Legno-alluminio</option>
-            </select>
-            <div class="image-preview" id="infissiEsterni-img"></div>
-          </div>
-          
-          <div class="form-group">
-            <label>Infissi Interni</label>
-            <select id="infissiInterni" onchange="updateImage('infissiInterni')" disabled>
-              <option value="">-- Seleziona --</option>
-              <option value="Legno massiccio">Legno massiccio</option>
-              <option value="Legno laminato">Legno laminato</option>
-              <option value="PVC">PVC</option>
-              <option value="Alluminio">Alluminio</option>
-              <option value="Vetro (scorrevole)">Vetro (scorrevole)</option>
-            </select>
-            <div class="image-preview" id="infissiInterni-img"></div>
-          </div>
-        </div>
-        
+        <!-- Campi personalizzati dinamici -->
+        <div class="form-grid" id="dynamicFieldsContainer"></div>
+
         <!-- FILES SECTION -->
         <div class="files-section">
           <h3>📎 File Allegati</h3>
@@ -172,5 +181,6 @@
   </div>
   
   <script src="script.js"></script>
+  <script src="admin.js"></script>
 </body>
 </html>

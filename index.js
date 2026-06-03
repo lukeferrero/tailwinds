@@ -50,6 +50,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
 });
 
 function initDatabase() {
+  // Tabella Appartamenti
   db.run(`
     CREATE TABLE IF NOT EXISTS appartamenti (
       id TEXT PRIMARY KEY,
@@ -61,20 +62,7 @@ function initDatabase() {
     )
   `);
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS personalizzazioni (
-      id TEXT PRIMARY KEY,
-      apartmentId TEXT NOT NULL,
-      pavimento TEXT,
-      sanitari TEXT,
-      rubinetteria TEXT,
-      ac TEXT,
-      infissiEsterni TEXT,
-      infissiInterni TEXT,
-      FOREIGN KEY(apartmentId) REFERENCES appartamenti(id)
-    )
-  `);
-
+  // Tabella Immagini
   db.run(`
     CREATE TABLE IF NOT EXISTS immagini (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,6 +73,7 @@ function initDatabase() {
     )
   `);
 
+  // Tabella File
   db.run(`
     CREATE TABLE IF NOT EXISTS files (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,6 +81,33 @@ function initDatabase() {
       fileName TEXT NOT NULL,
       filePath TEXT NOT NULL,
       uploadDate DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // NUOVO: Tabella Campi Personalizzati
+  db.run(`
+    CREATE TABLE IF NOT EXISTS custom_fields (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fieldName TEXT NOT NULL,
+      fieldType TEXT NOT NULL,
+      fieldOptions TEXT,
+      maxLength INTEGER,
+      required INTEGER DEFAULT 0,
+      position INTEGER DEFAULT 0,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // NUOVO: Tabella Valori Campi Personalizzati
+  db.run(`
+    CREATE TABLE IF NOT EXISTS custom_field_values (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      apartmentId TEXT NOT NULL,
+      fieldId INTEGER NOT NULL,
+      fieldValue TEXT,
+      FOREIGN KEY(apartmentId) REFERENCES appartamenti(id),
+      FOREIGN KEY(fieldId) REFERENCES custom_fields(id),
+      UNIQUE(apartmentId, fieldId)
     )
   `);
 }
@@ -115,32 +131,6 @@ app.post('/api/appartamenti', (req, res) => {
     (err) => {
       if (err) res.status(500).json({ error: err.message });
       else res.json({ id, nome, dimensione, prezzo, venduto });
-    }
-  );
-});
-
-// ===== API PERSONALIZZAZIONI =====
-
-app.get('/api/personalizzazioni/:apartmentId', (req, res) => {
-  db.get(
-    'SELECT * FROM personalizzazioni WHERE apartmentId = ?',
-    [req.params.apartmentId],
-    (err, row) => {
-      if (err) res.status(500).json({ error: err.message });
-      else res.json(row || null);
-    }
-  );
-});
-
-app.post('/api/personalizzazioni', (req, res) => {
-  const { id, apartmentId, pavimento, sanitari, rubinetteria, ac, infissiEsterni, infissiInterni } = req.body;
-
-  db.run(
-    'INSERT OR REPLACE INTO personalizzazioni (id, apartmentId, pavimento, sanitari, rubinetteria, ac, infissiEsterni, infissiInterni) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, apartmentId, pavimento, sanitari, rubinetteria, ac, infissiEsterni, infissiInterni],
-    (err) => {
-      if (err) res.status(500).json({ error: err.message });
-      else res.json({ success: true });
     }
   );
 });
@@ -245,6 +235,112 @@ app.delete('/api/files/:fileId', (req, res) => {
       }
     }
   );
+});
+
+// ===== API CAMPI PERSONALIZZATI (NUOVO) =====
+
+app.get('/api/custom-fields', (req, res) => {
+  db.all('SELECT * FROM custom_fields ORDER BY position', (err, rows) => {
+    if (err) res.status(500).json({ error: err.message });
+    else {
+      const fields = rows.map(row => ({
+        ...row,
+        fieldOptions: row.fieldOptions ? row.fieldOptions.split('|') : []
+      }));
+      res.json(fields || []);
+    }
+  });
+});
+
+app.post('/api/custom-fields', (req, res) => {
+  const { fieldName, fieldType, fieldOptions, maxLength, required, position } = req.body;
+  const optionsStr = fieldOptions && fieldOptions.length ? fieldOptions.join('|') : null;
+
+  db.run(
+    'INSERT INTO custom_fields (fieldName, fieldType, fieldOptions, maxLength, required, position) VALUES (?, ?, ?, ?, ?, ?)',
+    [fieldName, fieldType, optionsStr, maxLength || null, required ? 1 : 0, position || 0],
+    function(err) {
+      if (err) res.status(500).json({ error: err.message });
+      else res.json({ id: this.lastID, fieldName, fieldType });
+    }
+  );
+});
+
+app.put('/api/custom-fields/:id', (req, res) => {
+  const { fieldName, fieldType, fieldOptions, maxLength, required, position } = req.body;
+  const optionsStr = fieldOptions && fieldOptions.length ? fieldOptions.join('|') : null;
+
+  db.run(
+    'UPDATE custom_fields SET fieldName=?, fieldType=?, fieldOptions=?, maxLength=?, required=?, position=? WHERE id=?',
+    [fieldName, fieldType, optionsStr, maxLength || null, required ? 1 : 0, position, req.params.id],
+    (err) => {
+      if (err) res.status(500).json({ error: err.message });
+      else res.json({ success: true });
+    }
+  );
+});
+
+app.delete('/api/custom-fields/:id', (req, res) => {
+  db.run('DELETE FROM custom_fields WHERE id=?', [req.params.id], (err) => {
+    if (err) res.status(500).json({ error: err.message });
+    else {
+      db.run('DELETE FROM custom_field_values WHERE fieldId=?', [req.params.id], () => {
+        res.json({ success: true });
+      });
+    }
+  });
+});
+
+// ===== API VALORI CAMPI PERSONALIZZATI (NUOVO) =====
+
+app.get('/api/custom-field-values/:apartmentId', (req, res) => {
+  db.all(
+    'SELECT fieldId, fieldValue FROM custom_field_values WHERE apartmentId=?',
+    [req.params.apartmentId],
+    (err, rows) => {
+      if (err) res.status(500).json({ error: err.message });
+      else {
+        const values = {};
+        rows.forEach(row => {
+          values[row.fieldId] = row.fieldValue;
+        });
+        res.json(values);
+      }
+    }
+  );
+});
+
+app.post('/api/custom-field-values', (req, res) => {
+  const { apartmentId, fieldId, fieldValue } = req.body;
+
+  db.run(
+    'INSERT OR REPLACE INTO custom_field_values (apartmentId, fieldId, fieldValue) VALUES (?, ?, ?)',
+    [apartmentId, fieldId, fieldValue],
+    (err) => {
+      if (err) res.status(500).json({ error: err.message });
+      else res.json({ success: true });
+    }
+  );
+});
+
+app.post('/api/custom-field-values/bulk', (req, res) => {
+  const { apartmentId, values } = req.body;
+  
+  let completed = 0;
+  const total = Object.keys(values).length;
+
+  Object.entries(values).forEach(([fieldId, fieldValue]) => {
+    db.run(
+      'INSERT OR REPLACE INTO custom_field_values (apartmentId, fieldId, fieldValue) VALUES (?, ?, ?)',
+      [apartmentId, fieldId, fieldValue],
+      (err) => {
+        completed++;
+        if (completed === total) {
+          res.json({ success: true });
+        }
+      }
+    );
+  });
 });
 
 // ===== ROUTE PRINCIPALE =====

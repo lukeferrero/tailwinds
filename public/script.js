@@ -348,3 +348,174 @@ function showMessage(text, type) {
 window.onload = function() {
   loadApartments();
 };
+
+// ===== CAMPI PERSONALIZZATI DINAMICI =====
+
+let currentCustomFields = [];
+
+function loadAndRenderDynamicFields() {
+  fetch('/api/custom-fields')
+    .then(res => res.json())
+    .then(fields => {
+      currentCustomFields = fields;
+      renderDynamicFields(fields);
+      
+      // Carica i valori salvati
+      if (currentApartmentId) {
+        loadDynamicFieldValues(currentApartmentId);
+      }
+    });
+}
+
+function renderDynamicFields(fields) {
+  const container = document.getElementById('dynamicFieldsContainer');
+  container.innerHTML = '';
+
+  fields.forEach(field => {
+    const fieldGroup = document.createElement('div');
+    fieldGroup.className = 'form-group';
+    fieldGroup.id = `field-${field.id}`;
+
+    let inputHTML = '';
+
+    switch(field.fieldType) {
+      case 'text':
+        const maxAttr = field.maxLength ? `maxlength="${field.maxLength}"` : '';
+        inputHTML = `<input type="text" id="custom-${field.id}" placeholder="${field.fieldName}" disabled ${maxAttr}>`;
+        if (field.maxLength) {
+          inputHTML += `<small style="color: #999; margin-top: 5px; display: block;">Max ${field.maxLength} caratteri</small>`;
+        }
+        break;
+
+      case 'number':
+        inputHTML = `<input type="number" id="custom-${field.id}" placeholder="${field.fieldName}" disabled>`;
+        break;
+
+      case 'boolean':
+        inputHTML = `<label><input type="checkbox" id="custom-${field.id}" disabled> ${field.fieldName}</label>`;
+        break;
+
+      case 'select':
+        inputHTML = `<select id="custom-${field.id}" disabled>
+          <option value="">-- Seleziona --</option>`;
+        field.fieldOptions.forEach(opt => {
+          inputHTML += `<option value="${opt}">${opt}</option>`;
+        });
+        inputHTML += `</select>`;
+        break;
+
+      case 'file':
+        inputHTML = `<input type="file" id="custom-${field.id}" disabled style="display: none;">
+          <button type="button" class="btn-upload" onclick="document.getElementById('custom-${field.id}').click()" style="display: none;">
+            📤 Carica File
+          </button>
+          <div id="custom-${field.id}-files" style="margin-top: 10px;"></div>`;
+        break;
+    }
+
+    fieldGroup.innerHTML = `<label>${field.fieldName}${field.required ? ' *' : ''}</label>${inputHTML}`;
+    container.appendChild(fieldGroup);
+  });
+}
+
+function loadDynamicFieldValues(apartmentId) {
+  fetch(`/api/custom-field-values/${apartmentId}`)
+    .then(res => res.json())
+    .then(values => {
+      Object.entries(values).forEach(([fieldId, fieldValue]) => {
+        const input = document.getElementById(`custom-${fieldId}`);
+        if (input) {
+          if (input.type === 'checkbox') {
+            input.checked = fieldValue === '1' || fieldValue === 'true';
+          } else {
+            input.value = fieldValue || '';
+          }
+        }
+      });
+    });
+}
+
+function saveDynamicFieldValues() {
+  const values = {};
+
+  currentCustomFields.forEach(field => {
+    const input = document.getElementById(`custom-${field.id}`);
+    if (input) {
+      let value = '';
+      if (input.type === 'checkbox') {
+        value = input.checked ? '1' : '0';
+      } else {
+        value = input.value;
+      }
+      values[field.id] = value;
+    }
+  });
+
+  fetch('/api/custom-field-values/bulk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      apartmentId: currentApartmentId,
+      values: values
+    })
+  })
+  .then(res => res.json())
+  .then(() => {
+    console.log('Campi personalizzati salvati');
+  });
+}
+
+// Aggiorna la funzione savePersonalization per salvare anche i campi personalizzati
+const originalSavePersonalization = savePersonalization;
+savePersonalization = function() {
+  originalSavePersonalization();
+  saveDynamicFieldValues();
+};
+
+// Aggiorna la funzione viewApartment per caricare i campi dinamici
+const originalViewApartment = viewApartment;
+viewApartment = function(idx) {
+  originalViewApartment(idx);
+  setTimeout(() => {
+    loadAndRenderDynamicFields();
+  }, 100);
+};
+
+// Aggiorna enableEdit per abilitare i campi dinamici
+const originalEnableEdit = enableEdit;
+enableEdit = function() {
+  originalEnableEdit();
+  
+  currentCustomFields.forEach(field => {
+    const input = document.getElementById(`custom-${field.id}`);
+    if (input) {
+      input.disabled = false;
+      if (field.fieldType === 'file') {
+        const btn = input.nextElementSibling;
+        if (btn && btn.className === 'btn-upload') {
+          btn.style.display = 'inline-block';
+        }
+      }
+    }
+  });
+};
+
+// Aggiorna disableEdit per disabilitare i campi dinamici
+const originalDisableEdit = disableEdit;
+disableEdit = function() {
+  originalDisableEdit();
+  
+  currentCustomFields.forEach(field => {
+    const input = document.getElementById(`custom-${field.id}`);
+    if (input) {
+      input.disabled = true;
+      if (field.fieldType === 'file') {
+        const btn = input.nextElementSibling;
+        if (btn && btn.className === 'btn-upload') {
+          btn.style.display = 'none';
+        }
+      }
+    }
+  });
+};
+
