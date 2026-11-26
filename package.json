@@ -10,14 +10,17 @@
   "engines": {
     "node": ">=16.0.0"
   },
-  "keywords": ["appartamenti", "gestione", "nodejs"],
+  "keywords": [
+    "appartamenti",
+    "gestione",
+    "nodejs"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
-    "body-parser": "^1.20.2",
+    "body-parser": "^1.20.9",
     "multer": "^1.4.5-lts.1",
     "sqlite3": "^5.1.6"
   }
 }
-
